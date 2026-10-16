@@ -916,7 +916,8 @@ details .panel {
   font-weight: 600;
 }
 
-.form-fields input {
+.form-fields input,
+.form-fields select {
   min-width: 0;
   padding: 6px 8px;
   border: 1px solid var(--border);

@@ -14,7 +14,7 @@ This starts `serve.py` and opens http://localhost:8000. Stop it with Ctrl+C.
 for another port.)
 
 Opening `index.html` directly (or with `python3 -m http.server`) also shows everything,
-but marking and editing exercises is turned off, since nothing could save the changes.
+but marking and editing is turned off, since nothing could save the changes.
 
 ## The `fagplan` command
 
@@ -65,7 +65,8 @@ remembered per browser and are not synced.
   are listed under "past due and not marked".
 - **Exam dates** — all exams sorted by date, with days left.
 - **Course pages** (the coloured course codes) — lectures, exam, course material,
-  notes, and all exercises with approval progress.
+  notes, and all exercises with approval progress. Lectures and exercises can be
+  added and edited here.
 
 The page follows your system's light/dark mode.
 
@@ -100,6 +101,13 @@ never shows as overdue, and is left out of the "Mandatory exercises" page.
 Exercises can have a `time`, e.g. `{ due: "2026-10-18", time: "14:00", ... }`.
 It's shown next to the date, and the exercise counts as overdue once that time has
 passed. Without a time, it's due at the end of the day.
+
+## Lectures
+
+On a course page, **✎** next to a lecture changes its day, start and end time, or
+type (lecture / exercise lecture), or deletes it. **+ Add lecture** adds one. The
+week plan and the overview update right away, and the change is saved in the
+course file.
 
 ## Course files
 

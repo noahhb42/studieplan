@@ -14,7 +14,7 @@
 //   #week                week plan: lectures + exercise lectures, with toggles
 //   #deadlines           mandatory exercises due in the next 2 weeks
 //   #exams               exam dates
-//   #course/TDT4120      one course (exercises can be edited here)
+//   #course/TDT4120      one course (exercises and lectures can be edited here)
 //
 // Exercise progress and edits are saved in the course files by
 // serve.py. View settings (toggles, last opened semester) are
@@ -358,23 +358,23 @@ function cleanExercise(exercise) {
   return clean;
 }
 
-// Shows the new list right away, then saves it to the course file.
-// If saving fails, the old list is put back and an error is shown.
-function saveCourseExercises(course, newExercises) {
-  const previousExercises = course.exercises;
-  course.exercises = newExercises.slice().sort(compareByDue);
+// Sends one list ("exercises" or "lectures") of a course to serve.py,
+// which rewrites that list in the course file. Saves run one after
+// another. If saving fails, `undo()` puts the old list back and an
+// error is shown.
+function saveCourseList(course, field, items, undo) {
   saveErrorMessage = "";
   render();
 
   saveQueue = saveQueue.then(async () => {
     try {
-      const response = await fetch("/api/exercises", {
+      const response = await fetch(`/api/${field}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           semester: activeSemesterId,
           courseFile: course.fileName,
-          exercises: course.exercises.map(cleanExercise),
+          [field]: items,
         }),
       });
       if (!response.ok) {
@@ -382,10 +382,41 @@ function saveCourseExercises(course, newExercises) {
         throw new Error(answer.error || `Server answered ${response.status}.`);
       }
     } catch (error) {
-      course.exercises = previousExercises;
+      undo();
       saveErrorMessage = `Could not save ${course.code}: ${error.message}`;
       render();
     }
+  });
+}
+
+// Shows the new exercise list right away, then saves it.
+function saveCourseExercises(course, newExercises) {
+  const previousExercises = course.exercises;
+  course.exercises = newExercises.slice().sort(compareByDue);
+  saveCourseList(course, "exercises", course.exercises.map(cleanExercise), () => {
+    course.exercises = previousExercises;
+  });
+}
+
+// Lectures: main lectures first, then by weekday and start time
+function compareLectures(a, b) {
+  const byType = (a.type === "Main" ? 0 : 1) - (b.type === "Main" ? 0 : 1);
+  const byDay = WEEKDAYS.indexOf(a.day) - WEEKDAYS.indexOf(b.day);
+  const byStart = timeToMinutes(a.start) - timeToMinutes(b.start);
+  return byType || byDay || byStart;
+}
+
+// Only the fields that belong in the course file
+function cleanLecture(lecture) {
+  return { day: lecture.day, start: lecture.start, end: lecture.end, type: lecture.type };
+}
+
+// Shows the new lecture list right away, then saves it.
+function saveCourseLectures(course, newLectures) {
+  const previousLectures = course.lectures;
+  course.lectures = newLectures.slice().sort(compareLectures);
+  saveCourseList(course, "lectures", course.lectures.map(cleanLecture), () => {
+    course.lectures = previousLectures;
   });
 }
 
@@ -402,7 +433,7 @@ function renderReadOnlyNote() {
     return "";
   }
   return `<p class="read-only-note">
-    Marking and editing exercises is turned off because the page was opened without the server.
+    Marking and editing is turned off because the page was opened without the server.
     Start it with <code>python3 serve.py</code> to save changes.
   </p>`;
 }
@@ -419,6 +450,7 @@ let editError = "";
 
 function startEditing(courseCode, id) {
   editing = { courseCode, exerciseId: id };
+  editingLecture = null;
   editError = "";
   render();
   const firstInput = document.querySelector("[data-exercise-form] input");
@@ -427,8 +459,10 @@ function startEditing(courseCode, id) {
   }
 }
 
+// Closes any open form (exercise or lecture).
 function stopEditing() {
   editing = null;
+  editingLecture = null;
   editError = "";
   render();
 }
@@ -542,6 +576,129 @@ function handleExerciseDelete(button) {
   const { course, exercise } = findExerciseById(editing.exerciseId);
   editing = null;
   saveCourseExercises(course, course.exercises.filter((other) => other !== exercise));
+}
+
+
+// ---------------------------------------------------------
+// Editing lectures (add / edit / delete)
+// ---------------------------------------------------------
+// Works like exercise editing, on the course page.
+//   editingLecture = { courseCode, index }   index into course.lectures,
+//                                            null when adding
+
+let editingLecture = null;
+
+function startEditingLecture(courseCode, index) {
+  editingLecture = { courseCode, index };
+  editing = null;
+  editError = "";
+  render();
+  const firstInput = document.querySelector("[data-lecture-form] select");
+  if (firstInput) {
+    firstInput.focus();
+  }
+}
+
+function renderLectureForm(course, lecture, columnCount) {
+  const isNew = lecture === null;
+  const values = isNew ? { day: "Monday", start: "08:15", end: "10:00", type: "Main" } : lecture;
+
+  const dayOptions = WEEKDAYS
+    .map((day) => `<option value="${day}" ${values.day === day ? "selected" : ""}>${day}</option>`)
+    .join("");
+
+  return `
+    <tr class="edit-row" style="${hueStyle(course)}">
+      <td colspan="${columnCount}">
+        <form class="exercise-form" data-lecture-form data-course="${escapeHtml(course.code)}">
+          <div class="form-title">${isNew ? `New lecture in ${escapeHtml(course.code)}` : "Edit lecture"}</div>
+          <div class="form-fields">
+            <label>Day
+              <select name="day">${dayOptions}</select>
+            </label>
+            <label>Start
+              <input type="time" name="start" value="${escapeHtml(values.start)}" required>
+            </label>
+            <label>End
+              <input type="time" name="end" value="${escapeHtml(values.end)}" required>
+            </label>
+            <label>Type
+              <select name="type">
+                <option value="Main" ${values.type === "Main" ? "selected" : ""}>Lecture</option>
+                <option value="Exercise" ${values.type === "Exercise" ? "selected" : ""}>Exercise lecture</option>
+              </select>
+            </label>
+          </div>
+          ${editError ? `<p class="form-error">${escapeHtml(editError)}</p>` : ""}
+          <div class="form-actions">
+            <button type="submit" class="button primary">${isNew ? "Add" : "Save"}</button>
+            <button type="button" class="button" data-edit-cancel>Cancel</button>
+            ${isNew ? "" : `<button type="button" class="button danger" data-lecture-delete>Delete</button>`}
+          </div>
+        </form>
+      </td>
+    </tr>`;
+}
+
+function handleLectureFormSubmit(form) {
+  const course = courseByCode[form.dataset.course];
+  if (!course || !editingLecture) {
+    return;
+  }
+
+  const updated = {
+    day: form.elements.day.value,
+    start: form.elements.start.value,
+    end: form.elements.end.value,
+    type: form.elements.type.value,
+  };
+
+  if (!updated.start || !updated.end) {
+    editError = "Start and end time are required.";
+    render();
+    return;
+  }
+  if (timeToMinutes(updated.end) <= timeToMinutes(updated.start)) {
+    editError = "The lecture must end after it starts.";
+    render();
+    return;
+  }
+
+  const original = editingLecture.index === null ? null : course.lectures[editingLecture.index];
+  const duplicate = course.lectures.some((other) =>
+    other !== original && other.day === updated.day && other.start === updated.start &&
+    other.end === updated.end && other.type === updated.type
+  );
+  if (duplicate) {
+    editError = `${course.code} already has that lecture.`;
+    render();
+    return;
+  }
+
+  const newLectures = original
+    ? course.lectures.map((other) => (other === original ? updated : other))
+    : [...course.lectures, updated];
+
+  editingLecture = null;
+  editError = "";
+  saveCourseLectures(course, newLectures);
+}
+
+// The first click asks for confirmation, the second deletes.
+function handleLectureDelete(button) {
+  if (!editingLecture || editingLecture.index === null) {
+    return;
+  }
+  if (!button.dataset.confirm) {
+    button.dataset.confirm = "yes";
+    button.textContent = "Click again to delete";
+    return;
+  }
+
+  const course = courseByCode[editingLecture.courseCode];
+  const lecture = course.lectures[editingLecture.index];
+  editingLecture = null;
+  saveCourseLectures(course, course.lectures.filter((other) => other !== lecture));
 }
 
 
@@ -714,6 +871,7 @@ async function openSemester(id) {
     setActiveSemester(id, data);
     rememberOpenSemester(id);
     editing = null;
+    editingLecture = null;
     render();
   } catch (error) {
     document.getElementById("content").innerHTML =
@@ -1279,23 +1437,42 @@ function renderCoursePage(courseCode) {
     return `<p class="empty">Unknown course.</p>`;
   }
 
-  // Lectures: main lectures first, then by weekday and start time
-  const lectures = course.lectures.slice().sort((a, b) => {
-    const byType = (a.type === "Main" ? 0 : 1) - (b.type === "Main" ? 0 : 1);
-    const byDay = WEEKDAYS.indexOf(a.day) - WEEKDAYS.indexOf(b.day);
-    const byStart = timeToMinutes(a.start) - timeToMinutes(b.start);
-    return byType || byDay || byStart;
-  });
+  // Lectures, sorted (main lectures first). `index` points into
+  // course.lectures so the edit form knows which one to change.
+  const lectureColumns = canSave ? 4 : 3;
+  const editingLectureHere = editingLecture && editingLecture.courseCode === course.code;
+  const lectures = course.lectures
+    .map((lecture, index) => ({ lecture, index }))
+    .sort((a, b) => compareLectures(a.lecture, b.lecture));
 
-  let lectureRows = lectures.map((lecture) => `
+  let lectureRows = lectures.map(({ lecture, index }) => {
+    if (editingLectureHere && editingLecture.index === index) {
+      return renderLectureForm(course, lecture, lectureColumns);
+    }
+    const editCell = canSave
+      ? `<td class="status-cell"><button type="button" class="edit-button" data-edit-lecture="${index}"
+           data-course="${escapeHtml(course.code)}" title="Edit or delete" aria-label="Edit">✎</button></td>`
+      : "";
+    return `
     <tr>
       <td>${lecture.day}</td>
       <td class="tabular">${lecture.start}–${lecture.end}</td>
       <td>${lectureTypeLabel(lecture.type)}</td>
-    </tr>`).join("");
-  if (lectures.length === 0) {
-    lectureRows = `<tr><td colspan="3" class="empty">No lectures.</td></tr>`;
+      ${editCell}
+    </tr>`;
+  }).join("");
+
+  const addingLectureHere = editingLectureHere && editingLecture.index === null;
+  if (lectures.length === 0 && !addingLectureHere) {
+    lectureRows = `<tr><td colspan="${lectureColumns}" class="empty">No lectures.</td></tr>`;
   }
+  if (addingLectureHere) {
+    lectureRows += renderLectureForm(course, null, lectureColumns);
+  }
+
+  const addLectureButton = canSave && !addingLectureHere
+    ? `<button type="button" class="button add-button" data-add-lecture="${escapeHtml(course.code)}">+ Add lecture</button>`
+    : "";
 
   // Exercises (already sorted by deadline), plus the "add" form when adding
   const exercises = course.exercises.map((exercise) => exerciseItem(course, exercise));
@@ -1361,10 +1538,11 @@ function renderCoursePage(courseCode) {
         <h3 class="section-title">Lectures</h3>
         <div class="panel">
           <table>
-            <thead><tr><th>Day</th><th>Time</th><th>Type</th></tr></thead>
+            <thead><tr><th>Day</th><th>Time</th><th>Type</th>${canSave ? "<th></th>" : ""}</tr></thead>
             <tbody>${lectureRows}</tbody>
           </table>
         </div>
+        ${addLectureButton}
 
         <h3 class="section-title">Exam</h3>
         <div class="panel stat">${examHtml}</div>
@@ -1497,15 +1675,21 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("submit", (event) => {
-  const form = event.target.closest("[data-exercise-form]");
-  if (form) {
+  const exerciseForm = event.target.closest("[data-exercise-form]");
+  if (exerciseForm) {
     event.preventDefault();
-    handleExerciseFormSubmit(form);
+    handleExerciseFormSubmit(exerciseForm);
+    return;
+  }
+  const lectureForm = event.target.closest("[data-lecture-form]");
+  if (lectureForm) {
+    event.preventDefault();
+    handleLectureFormSubmit(lectureForm);
   }
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && editing) {
+  if (event.key === "Escape" && (editing || editingLecture)) {
     stopEditing();
   }
 });
@@ -1544,6 +1728,23 @@ document.addEventListener("click", (event) => {
   const deleteButton = target.closest("[data-edit-delete]");
   if (deleteButton) {
     handleExerciseDelete(deleteButton);
+    return;
+  }
+
+  // Lectures: ✎ edit, + add, delete
+  const editLectureButton = target.closest("[data-edit-lecture]");
+  if (editLectureButton) {
+    startEditingLecture(editLectureButton.dataset.course, Number(editLectureButton.dataset.editLecture));
+    return;
+  }
+  const addLectureButton = target.closest("[data-add-lecture]");
+  if (addLectureButton) {
+    startEditingLecture(addLectureButton.dataset.addLecture, null);
+    return;
+  }
+  const deleteLectureButton = target.closest("[data-lecture-delete]");
+  if (deleteLectureButton) {
+    handleLectureDelete(deleteLectureButton);
     return;
   }
 
@@ -1590,6 +1791,7 @@ document.addEventListener("click", (event) => {
 
 window.addEventListener("hashchange", () => {
   editing = null;
+  editingLecture = null;
   render();
   window.scrollTo(0, 0);
 });
@@ -1597,7 +1799,7 @@ window.addEventListener("hashchange", () => {
 // Re-draw every minute so "today", countdowns and the time line stay
 // current — but not while a form is open, so typing isn't lost.
 setInterval(() => {
-  if (activeSemesterId && !editing) {
+  if (activeSemesterId && !editing && !editingLecture) {
     render();
   }
 }, 60 * 1000);

@@ -5,8 +5,9 @@ Studieplan local server.
     python3 serve.py 8080     # another port
 
 Serves the page like `python3 -m http.server`, and also lets the page save
-exercises: marking one Done/Late, editing, adding or deleting it rewrites the
-`exercises: [...]` list in the course file, e.g. semesters/H26/courses/TFY4107.js.
+changes: marking an exercise Done/Late, or adding, editing or deleting an
+exercise or lecture, rewrites the `exercises: [...]` or `lectures: [...]` list
+in the course file, e.g. semesters/H26/courses/TFY4107.js.
 Everything else in the file is left as it is.
 The files are the only place progress is stored, so commit and push to sync
 between computers.
@@ -90,13 +91,58 @@ def format_exercises(exercises):
     return "\n".join(lines)
 
 
-def find_exercises_block(text):
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+LECTURE_TYPES = ("Main", "Exercise")
+
+
+def validate_lectures(lectures):
+    """Checks the lecture list sent by the page. Returns an error message or None."""
+    if not isinstance(lectures, list):
+        return "Lectures must be a list."
+    for lecture in lectures:
+        if not isinstance(lecture, dict):
+            return "Each lecture must be an object."
+        if lecture.get("day") not in WEEKDAYS:
+            return f"Invalid day: {lecture.get('day')!r}."
+        start, end = str(lecture.get("start", "")), str(lecture.get("end", ""))
+        if not (TIME_PATTERN.match(start) and TIME_PATTERN.match(end)):
+            return f"Invalid time: {start!r}–{end!r}."
+        if start >= end:
+            return f"A lecture must end after it starts ({start}–{end})."
+        if lecture.get("type") not in LECTURE_TYPES:
+            return f"Unknown lecture type {lecture.get('type')!r}."
+    return None
+
+
+def format_lectures(lectures):
     """
-    Returns (start, end) of `exercises: [ ... ]` in the course file text,
+    Formats the lectures the same way as in the course files:
+
+      lectures: [
+        { day: "Friday",    start: "12:15", end: "15:00", type: "Main" },
+      ],
+    """
+    if not lectures:
+        return "lectures: []"
+
+    lines = ["lectures: ["]
+    for lecture in lectures:
+        day = (json.dumps(lecture["day"]) + ",").ljust(12)
+        lines.append(
+            f'    {{ day: {day} start: {json.dumps(lecture["start"])}, '
+            f'end: {json.dumps(lecture["end"])}, type: {json.dumps(lecture["type"])} }},'
+        )
+    lines.append("  ]")
+    return "\n".join(lines)
+
+
+def find_list_block(text, field):
+    """
+    Returns (start, end) of e.g. `exercises: [ ... ]` in the course file text,
     by matching brackets (and skipping over strings and comments).
     """
     # The field itself, at the start of a line (not the word in a comment)
-    match = re.search(r"^[ \t]*exercises:\s*\[", text, re.MULTILINE)
+    match = re.search(rf"^[ \t]*{field}:\s*\[", text, re.MULTILINE)
     if match is None:
         return None
     start = match.start() + len(match.group(0)) - len(match.group(0).lstrip())
@@ -121,12 +167,21 @@ def find_exercises_block(text):
     return None
 
 
-def save_exercises(semester, course_file, exercises):
-    """Replaces the course file's exercise list. Returns an error message or None."""
+# What the page can save: field name -> (check, format)
+SAVABLE_LISTS = {
+    "exercises": (validate_exercises, format_exercises),
+    "lectures": (validate_lectures, format_lectures),
+}
+
+
+def save_list(semester, course_file, field, items):
+    """Replaces one list (exercises or lectures) in the course file.
+    Returns an error message, or None on success."""
     if not (is_safe_name(semester) and is_safe_name(course_file)):
         return "Invalid semester or course name."
 
-    error = validate_exercises(exercises)
+    validate, format_list = SAVABLE_LISTS[field]
+    error = validate(items)
     if error:
         return error
 
@@ -136,11 +191,11 @@ def save_exercises(semester, course_file, exercises):
 
     with write_lock:
         text = path.read_text(encoding="utf-8")
-        block = find_exercises_block(text)
+        block = find_list_block(text, field)
         if block is None:
-            return f"Could not find the exercises list in {path.relative_to(ROOT)}."
+            return f"Could not find the {field} list in {path.relative_to(ROOT)}."
         start, end = block
-        text = text[:start] + format_exercises(exercises) + text[end:]
+        text = text[:start] + format_list(items) + text[end:]
         path.write_text(text, encoding="utf-8")
 
     return None
@@ -161,17 +216,20 @@ class StudieplanHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if self.path != "/api/exercises":
+        # POST /api/exercises or /api/lectures
+        field = self.path[len("/api/"):] if self.path.startswith("/api/") else ""
+        if field not in SAVABLE_LISTS:
             self.send_json(404, {"error": "Unknown address."})
             return
 
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length).decode("utf-8"))
-            error = save_exercises(
+            error = save_list(
                 semester=body["semester"],
                 course_file=body["courseFile"],
-                exercises=body["exercises"],
+                field=field,
+                items=body[field],
             )
         except (ValueError, KeyError) as exception:
             error = f"Bad request: {exception}"
