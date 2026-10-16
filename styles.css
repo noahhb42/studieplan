@@ -1,0 +1,750 @@
+/* =========================================================
+   Studieplan styles
+   ---------------------------------------------------------
+   Every course has a hue (0–360) that is set on its element
+   as the CSS variable --hue. The tint/edge/text variables
+   below turn that hue into a background, a border and a text
+   colour, with different values for light and dark mode.
+   ========================================================= */
+
+:root {
+  /* Base colours */
+  --background: #f5f4f0;
+  --panel: #ffffff;
+  --text: #1c1c1e;
+  --muted: #6d6d73;
+  --border: #e5e3dd;
+  --soft: #efede8;
+  --accent: #2f5bd3;
+  --warning: #c2410c;
+
+  /* Course colours (saturation + lightness used with --hue) */
+  --tint-saturation: 78%;
+  --tint-lightness: 92%;
+  --edge-saturation: 48%;
+  --edge-lightness: 44%;
+  --course-text-saturation: 35%;
+  --course-text-lightness: 24%;
+
+  /* Height of one hour in the weekly calendar */
+  --hour-height: 52px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #131315;
+    --panel: #1b1b1e;
+    --text: #ececef;
+    --muted: #9a9aa3;
+    --border: #2b2b30;
+    --soft: #232327;
+    --accent: #86a3ff;
+    --warning: #fb923c;
+
+    --tint-saturation: 26%;
+    --tint-lightness: 21%;
+    --edge-saturation: 55%;
+    --edge-lightness: 62%;
+    --course-text-saturation: 40%;
+    --course-text-lightness: 88%;
+
+    color-scheme: dark;
+  }
+}
+
+/* Reusable course colours */
+.course-tint {
+  background: hsl(var(--hue) var(--tint-saturation) var(--tint-lightness));
+  color: hsl(var(--hue) var(--course-text-saturation) var(--course-text-lightness));
+}
+
+
+/* ---------- Page layout ---------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 20px 64px;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 28px 0 14px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.page-title .semester {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.page-subtitle {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+h2 {
+  margin: 0 0 4px;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.section-title {
+  margin: 28px 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: 14px 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+
+/* ---------- Semester switcher ---------- */
+
+.semester-switcher {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.semester-button {
+  position: relative;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.semester-button:hover {
+  background: var(--soft);
+  color: var(--text);
+}
+
+.semester-button.active {
+  background: var(--text);
+  color: var(--background);
+}
+
+/* Marks the semester we are currently in */
+.now-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+
+/* ---------- Navigation ---------- */
+
+.navigation {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-bottom: 22px;
+  padding: 8px 0 12px;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs,
+.course-links {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar,
+.course-links::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs {
+  gap: 4px;
+}
+
+.course-links {
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tab {
+  padding: 7px 13px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  background: var(--soft);
+  color: var(--text);
+}
+
+.tab.active {
+  background: var(--text);
+  color: var(--background);
+}
+
+
+/* ---------- Course chip (small coloured course code) ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chip.active {
+  border-color: hsl(var(--hue) var(--edge-saturation) var(--edge-lightness));
+}
+
+.chip-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: hsl(var(--hue) var(--edge-saturation) var(--edge-lightness));
+}
+
+
+/* ---------- Overview: stats ---------- */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.stat {
+  padding: 14px 16px;
+}
+
+.stat-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.stat-value {
+  margin-top: 4px;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.stat-detail {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+
+/* ---------- Overview: today's lectures ---------- */
+
+.today-list {
+  padding: 6px;
+}
+
+.today-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+}
+
+.today-item + .today-item {
+  border-top: 1px solid var(--border);
+}
+
+.today-item.finished {
+  opacity: 0.45;
+}
+
+.today-time {
+  flex: none;
+  width: 92px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.today-course-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.today-type {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+
+/* ---------- Overview: course cards ---------- */
+
+.course-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.course-card {
+  display: block;
+  padding: 14px 16px;
+  border-left: 4px solid hsl(var(--hue) var(--edge-saturation) var(--edge-lightness));
+  transition: transform 0.12s;
+}
+
+.course-card:hover {
+  transform: translateY(-1px);
+}
+
+.course-card-code {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.course-card-name {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+  font-size: 13px;
+}
+
+.info-row > span:first-child {
+  color: var(--muted);
+}
+
+.progress-bar {
+  height: 5px;
+  margin: 8px 0 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--soft);
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: hsl(var(--hue) var(--edge-saturation) var(--edge-lightness));
+}
+
+
+/* ---------- Weekly calendar ---------- */
+
+.calendar-scroll {
+  overflow-x: auto;
+}
+
+.calendar {
+  display: grid;
+  grid-template-columns: 52px repeat(5, minmax(110px, 1fr));
+  min-width: 640px;
+  padding: 0 8px 8px 0;
+}
+
+.calendar-day-name {
+  padding: 12px 8px 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.calendar-day-name.today {
+  color: var(--accent);
+}
+
+.calendar-hours {
+  position: relative;
+}
+
+.calendar-hour-label {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-day {
+  position: relative;
+  border-left: 1px solid var(--border);
+  /* one horizontal line per hour */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--border) 0 1px,
+    transparent 1px var(--hour-height)
+  );
+}
+
+.calendar-day.today {
+  background-color: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.calendar-event {
+  position: absolute;
+  overflow: hidden;
+  padding: 4px 7px;
+  border-left: 3px solid hsl(var(--hue) var(--edge-saturation) var(--edge-lightness));
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--panel);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.calendar-event:hover {
+  z-index: 2;
+  filter: brightness(0.97);
+}
+
+.calendar-event-code {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.calendar-event-name {
+  opacity: 0.85;
+}
+
+.current-time-line {
+  position: absolute;
+  left: -1px;
+  right: 0;
+  z-index: 3;
+  height: 2px;
+  background: var(--accent);
+}
+
+.current-time-line::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+
+/* ---------- Tables ---------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Exercise rows are tinted with the course colour */
+tr.exercise-row td {
+  background: hsl(var(--hue) var(--tint-saturation) var(--tint-lightness) / 0.55);
+}
+
+tr.exercise-row td:first-child {
+  box-shadow: inset 3px 0 hsl(var(--hue) var(--edge-saturation) var(--edge-lightness));
+}
+
+tr.exercise-row.completed td {
+  opacity: 0.5;
+}
+
+tr.exercise-row.completed .exercise-name {
+  text-decoration: line-through;
+}
+
+.checkbox-cell {
+  width: 1%;
+  text-align: center;
+}
+
+.relative-date {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.relative-date.overdue {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.relative-date.soon {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+details {
+  margin-top: 18px;
+}
+
+summary {
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+details .panel {
+  margin-top: 10px;
+}
+
+
+/* ---------- Exam dates ---------- */
+
+.exam-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.exam-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-left: 4px solid hsl(var(--hue) var(--edge-saturation) var(--edge-lightness));
+}
+
+.exam-card.past {
+  opacity: 0.45;
+}
+
+.exam-countdown {
+  min-width: 54px;
+  text-align: center;
+}
+
+.exam-countdown-number {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.exam-countdown-unit {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.exam-code {
+  font-weight: 700;
+}
+
+.exam-name {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.exam-when {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+
+/* ---------- Course page ---------- */
+
+.course-header {
+  padding: 18px 20px;
+  border-left: 5px solid hsl(var(--hue) var(--edge-saturation) var(--edge-lightness));
+  border-radius: 12px;
+}
+
+.course-header h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.course-header p {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.notes {
+  margin: 0;
+  padding: 12px 16px;
+}
+
+.notes li {
+  margin: 4px 0 4px 18px;
+}
+
+
+/* ---------- Warning when course files are missing ---------- */
+
+.load-problems {
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--warning);
+  border-radius: 12px;
+  color: var(--warning);
+  font-size: 14px;
+}
+
+.load-problems ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 760px) {
+  .page {
+    padding: 0 16px 48px;
+  }
+
+  .page-title {
+    font-size: 22px;
+  }
+
+  .two-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .today-course-name {
+    display: none;
+  }
+
+  .today-time {
+    width: 84px;
+  }
+}

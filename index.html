@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studieplan</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">Studieplan <span class="semester" id="semester"></span></h1>
+        <div class="page-subtitle" id="today"></div>
+      </div>
+      <div class="semester-switcher" id="semester-switcher" aria-label="Semester"></div>
+    </header>
+
+    <nav class="navigation">
+      <div class="tabs" id="tabs"></div>
+      <div class="course-links" id="course-links"></div>
+    </nav>
+
+    <div id="load-problems"></div>
+    <main id="content"></main>
+  </div>
+
+  <!-- app.js loads the data files in semesters/ and draws the page -->
+  <script src="app.js"></script>
+</body>
+</html>
