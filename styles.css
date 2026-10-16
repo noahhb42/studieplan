@@ -724,6 +724,25 @@ details .panel {
   padding-left: 20px;
 }
 
+/* Shown when the page was opened without serve.py */
+.read-only-note {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.read-only-note code {
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
 
 /* ---------- Small screens ---------- */
 

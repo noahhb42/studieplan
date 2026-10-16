@@ -47,11 +47,11 @@ const TABS = [
 
 
 // ---------------------------------------------------------
-// Saved state (ticked exercises, "hide completed" toggle,
-// last opened semester)
+// Browser settings ("hide completed" toggle, last opened semester)
 // ---------------------------------------------------------
+// These are only view settings. Exercise progress is NOT stored
+// here: it lives in the course files (see "Saving ticks" below).
 
-const STORAGE_KEY_COMPLETED = "studieplan.done";
 const STORAGE_KEY_HIDE_COMPLETED = "studieplan.hideDone";
 const STORAGE_KEY_SEMESTER = "studieplan.semester";
 
@@ -72,20 +72,92 @@ function saveSetting(key, value) {
   }
 }
 
-// Map from exercise id -> true/false. Overrides `done` from the course files.
-let completedOverrides = loadSetting(STORAGE_KEY_COMPLETED, {});
 let hideCompleted = loadSetting(STORAGE_KEY_HIDE_COMPLETED, true);
 
+
+// ---------------------------------------------------------
+// Saving ticks
+// ---------------------------------------------------------
+// The course files are the only record of which exercises are done.
+// When the page is started with `python3 serve.py`, ticking a box
+// asks serve.py to change `done:` in the course file. When index.html
+// is opened directly there is no server, so the boxes are read-only.
+
+let canSave = false;      // set on startup by checkServer()
+let saveErrorMessage = "";
+
+// Identifies an exercise in a checkbox: "TFY4107|Øving 9|2026-10-18"
 function exerciseId(course, exercise) {
   return `${course.code}|${exercise.name}|${exercise.due}`;
 }
 
-function isCompleted(course, exercise) {
-  const id = exerciseId(course, exercise);
-  if (id in completedOverrides) {
-    return completedOverrides[id];
+function findExerciseById(id) {
+  for (const course of courses) {
+    for (const exercise of course.exercises) {
+      if (exerciseId(course, exercise) === id) {
+        return { course, exercise };
+      }
+    }
   }
+  return null;
+}
+
+function isCompleted(course, exercise) {
   return Boolean(exercise.done);
+}
+
+// True when serve.py is running (it answers /api/ping).
+async function checkServer() {
+  if (location.protocol === "file:") {
+    return false;
+  }
+  try {
+    const response = await fetch("/api/ping", { cache: "no-store" });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Updates the page right away, then saves to the course file.
+// If saving fails, the tick is undone and an error is shown.
+async function saveExerciseDone(course, exercise, done) {
+  exercise.done = done;
+  saveErrorMessage = "";
+  render();
+
+  try {
+    const response = await fetch("/api/exercise", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        semester: activeSemesterId,
+        courseFile: course.fileName,
+        due: exercise.due,
+        name: exercise.name,
+        done,
+      }),
+    });
+    if (!response.ok) {
+      const answer = await response.json().catch(() => ({}));
+      throw new Error(answer.error || `Server answered ${response.status}.`);
+    }
+  } catch (error) {
+    exercise.done = !done;
+    saveErrorMessage = `Could not save "${exercise.name}" for ${course.code}: ${error.message}`;
+    render();
+  }
+}
+
+// Shown next to exercise tables when ticking is turned off.
+function renderReadOnlyNote() {
+  if (canSave) {
+    return "";
+  }
+  return `<p class="read-only-note">
+    Ticking is turned off because the page was opened without the server.
+    Start it with <code>python3 serve.py</code> to save progress.
+  </p>`;
 }
 
 
@@ -325,13 +397,15 @@ async function loadSemester(id) {
   );
 
   const semester = { courses: [], problems: [] };
-  for (const result of results) {
+  results.forEach((result, index) => {
     if (result.status === "fulfilled") {
-      semester.courses.push(result.value);
+      const course = result.value;
+      course.fileName = courseNames[index];  // needed when saving ticks
+      semester.courses.push(course);
     } else {
       semester.problems.push(result.reason.message);
     }
-  }
+  });
 
   loadedSemesters[id] = semester;
   return semester;
@@ -459,6 +533,7 @@ function renderExerciseRow(item, showCourseColumn) {
         <input type="checkbox"
                data-exercise-id="${escapeHtml(exerciseId(course, exercise))}"
                ${completed ? "checked" : ""}
+               ${canSave ? "" : "disabled"}
                aria-label="Completed">
       </td>
     </tr>`;
@@ -723,8 +798,9 @@ function renderDeadlinesPage() {
     <h2>Mandatory exercises</h2>
     <p class="lede">
       Due in the next 2 weeks (to ${formatDate(windowEnd)}).
-      Tick to mark completed — saved in this browser.
+      Ticking an exercise saves it in the course file.
     </p>
+    ${renderReadOnlyNote()}
     <div class="toolbar">
       <label>
         <input type="checkbox" id="hide-completed" ${hideCompleted ? "checked" : ""}>
@@ -882,6 +958,7 @@ function renderCoursePage(courseCode) {
 
       <div>
         <h3 class="section-title">Mandatory exercises · ${completedCount}/${exercises.length} done</h3>
+        ${exercises.length > 0 ? renderReadOnlyNote() : ""}
         <div class="panel">
           <table>
             <thead><tr><th>Exercise</th><th>Due</th><th>Done</th></tr></thead>
@@ -967,15 +1044,20 @@ function render() {
   document.getElementById("content").innerHTML = PAGES[route.page](route.argument);
 }
 
-// Shows a warning if some course files listed in semester.js couldn't be loaded.
+// Shows warnings: course files that couldn't be loaded, and a failed save.
 function renderLoadProblems() {
-  const box = document.getElementById("load-problems");
-  if (loadProblems.length === 0) {
-    box.innerHTML = "";
-    return;
+  let html = "";
+
+  if (loadProblems.length > 0) {
+    const items = loadProblems.map((message) => `<li>${escapeHtml(message)}</li>`).join("");
+    html += `<div class="load-problems"><strong>Some courses could not be loaded:</strong><ul>${items}</ul></div>`;
   }
-  const items = loadProblems.map((message) => `<li>${escapeHtml(message)}</li>`).join("");
-  box.innerHTML = `<div class="load-problems"><strong>Some courses could not be loaded:</strong><ul>${items}</ul></div>`;
+
+  if (saveErrorMessage) {
+    html += `<div class="load-problems">${escapeHtml(saveErrorMessage)}</div>`;
+  }
+
+  document.getElementById("load-problems").innerHTML = html;
 }
 
 document.addEventListener("change", (event) => {
@@ -989,9 +1071,10 @@ document.addEventListener("change", (event) => {
   }
 
   if (input.dataset.exerciseId) {
-    completedOverrides[input.dataset.exerciseId] = input.checked;
-    saveSetting(STORAGE_KEY_COMPLETED, completedOverrides);
-    render();
+    const found = findExerciseById(input.dataset.exerciseId);
+    if (found) {
+      saveExerciseDone(found.course, found.exercise, input.checked);
+    }
   }
 });
 
@@ -1022,6 +1105,8 @@ setInterval(() => {
 
 // Start: read the semester list, then open the right semester.
 async function start() {
+  canSave = await checkServer();
+
   try {
     semesterIds = await loadDataFile(buildPath("semesters", "index.js"));
   } catch (error) {

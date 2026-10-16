@@ -5,15 +5,23 @@ A local page with my full study plan: weekly lecture calendars, mandatory exerci
 ## Run
 
 ```sh
-python3 -m http.server 8000
+python3 serve.py
 ```
 
-Then open http://localhost:8000. (Opening `index.html` directly also works.)
+This opens http://localhost:8000 (use `python3 serve.py 8080` for another port).
+
+Ticking an exercise on the page writes `done: true` / `done: false` into the course file,
+so the course files are the only record of your progress. Commit and push to sync it,
+and `git pull` on another computer.
+
+Opening `index.html` directly (or with `python3 -m http.server`) also shows everything,
+but the checkboxes are read-only, since nothing could save them.
 
 ## Structure
 
 ```
 index.html, app.js, styles.css     the page (all logic is in app.js)
+serve.py                           local server that also saves ticks
 semesters/
   index.js                         list of semesters
   H26/
@@ -50,4 +58,4 @@ Use the buttons in the top right. The page opens the semester you had open last,
 except when a new semester has started since then — then it opens the new current one.
 (Autumn "H" semesters start 1 August, spring "V" semesters 1 January.)
 
-Ticking an exercise as done on the page is saved in the browser.
+"Hide completed" and the last opened semester are remembered per browser.
