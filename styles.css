@@ -17,6 +17,7 @@
   --soft: #efede8;
   --accent: #2f5bd3;
   --warning: #c2410c;
+  --live: #15803d;     /* lectures happening right now */
 
   /* Course colours (saturation + lightness used with --hue) */
   --tint-saturation: 78%;
@@ -42,6 +43,7 @@
     --soft: #232327;
     --accent: #86a3ff;
     --warning: #fb923c;
+    --live: #4ade80;
 
     --tint-saturation: 26%;
     --tint-lightness: 21%;
@@ -337,6 +339,33 @@ h2 {
   opacity: 0.45;
 }
 
+/* A lecture happening right now: green, like an "on air" light */
+.today-item.live {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--live) 12%, transparent);
+  box-shadow: inset 3px 0 var(--live);
+}
+
+.today-item.live + .today-item {
+  border-top-color: transparent;
+}
+
+.today-item.live .today-time {
+  color: var(--live);
+  font-weight: 650;
+}
+
+/* How far into the lecture we are */
+.live-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--live);
+}
+
 .today-time {
   flex: none;
   width: 92px;
@@ -492,6 +521,21 @@ h2 {
   opacity: 0.85;
 }
 
+/* Three or more lectures side by side: smaller text, no times */
+.calendar-event.narrow {
+  padding: 3px 1px 3px 3px;
+  border-left-width: 2px;
+}
+
+.calendar-event.narrow .calendar-event-code {
+  font-size: 10px;
+  letter-spacing: -0.03em;
+}
+
+.calendar-event.narrow .tabular {
+  display: none;
+}
+
 .current-time-line {
   position: absolute;
   left: -1px;
@@ -510,6 +554,101 @@ h2 {
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
+}
+
+
+/* Exercise lectures: striped and with a dashed edge, so they stand
+   apart from main lectures in the combined week plan */
+.calendar-event.exercise {
+  border-left-style: dashed;
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 7px,
+    color-mix(in srgb, var(--panel) 45%, transparent) 7px 14px
+  );
+}
+
+
+/* ---------- Week plan toggles ---------- */
+
+.week-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.toggle.on {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+/* Small sample of how each lecture type looks in the calendar */
+.toggle-swatch {
+  width: 18px;
+  height: 12px;
+  border-radius: 3px;
+  border-left: 3px solid var(--muted);
+  background: var(--soft);
+}
+
+.toggle.type-exercise .toggle-swatch {
+  border-left-style: dashed;
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, var(--border) 3px 6px);
+}
+
+.toggle:not(.on) .toggle-swatch {
+  opacity: 0.4;
+}
+
+.course-toggle {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.course-toggle.off {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.course-toggle.off .chip-dot {
+  opacity: 0.35;
+}
+
+.link-button {
+  padding: 3px 6px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 
@@ -559,9 +698,135 @@ tr.exercise-row.completed .exercise-name {
   text-decoration: line-through;
 }
 
-.checkbox-cell {
+/* ---------- Exercise status: Done / Late buttons ---------- */
+
+.status-cell {
   width: 1%;
-  text-align: center;
+  white-space: nowrap;
+}
+
+.status-buttons {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.status-button {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.status-button:hover:not(:disabled) {
+  background: var(--soft);
+  color: var(--text);
+}
+
+.status-button.done.active {
+  background: var(--accent);
+  color: var(--panel);
+}
+
+.status-button.late.active {
+  background: var(--warning);
+  color: var(--panel);
+}
+
+.status-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ✎ button next to Done/Late */
+.edit-button {
+  margin-left: 4px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.edit-button:hover {
+  background: var(--soft);
+  color: var(--text);
+}
+
+.status-buttons {
+  vertical-align: middle;
+}
+
+/* Keep the buttons readable on completed (faded) rows */
+tr.exercise-row.completed td.status-cell {
+  opacity: 1;
+}
+
+/* Voluntary exercises: lighter, with a small tag */
+tr.exercise-row.voluntary td {
+  background: transparent;
+}
+
+tr.exercise-row.voluntary td:first-child {
+  box-shadow: inset 3px 0 var(--border);
+}
+
+.voluntary-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.late-tag {
+  margin-left: 8px;
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* "6 of 8 approved · 2 more needed, 5 left" */
+.approval-line {
+  margin: -4px 0 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.approval-line strong {
+  color: var(--text);
+}
+
+.approval-ok {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.approval-risk {
+  color: var(--warning);
+  font-weight: 600;
 }
 
 .relative-date {
@@ -615,6 +880,99 @@ summary {
 }
 
 details .panel {
+  margin-top: 10px;
+}
+
+
+/* ---------- Editing exercises ---------- */
+
+.edit-row td {
+  background: hsl(var(--hue) var(--tint-saturation) var(--tint-lightness) / 0.55);
+  box-shadow: inset 3px 0 hsl(var(--hue) var(--edge-saturation) var(--edge-lightness));
+}
+
+.exercise-form {
+  padding: 4px 0;
+}
+
+.form-title {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.form-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.form-fields label {
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.form-fields input {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.form-fields input[name="name"] {
+  width: 180px;
+}
+
+.form-error {
+  margin: 8px 0 0;
+  color: var(--warning);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--soft);
+}
+
+.button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--panel);
+}
+
+.button.danger {
+  margin-left: auto;
+  color: var(--warning);
+}
+
+.add-button {
   margin-top: 10px;
 }
 
@@ -698,6 +1056,41 @@ details .panel {
   gap: 20px;
 }
 
+.materials {
+  margin: 0;
+  padding: 4px 16px;
+  list-style: none;
+}
+
+.materials li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+}
+
+.materials li + li {
+  border-top: 1px solid var(--border);
+}
+
+.material-title {
+  font-weight: 500;
+}
+
+.material-link {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.material-link:hover {
+  text-decoration: underline;
+}
+
+.material-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .notes {
   margin: 0;
   padding: 12px 16px;
@@ -765,5 +1158,26 @@ input[type="checkbox"]:disabled {
 
   .today-time {
     width: 84px;
+  }
+
+  /* Exercise tables: tighter cells, "in 2 days" on its own line */
+  th,
+  td {
+    padding: 8px 8px;
+  }
+
+  .relative-date {
+    display: block;
+    margin-left: 0;
+  }
+
+  .late-tag,
+  .voluntary-tag {
+    display: inline-block;
+    margin: 2px 0 0;
+  }
+
+  .status-button {
+    padding: 3px 7px;
   }
 }

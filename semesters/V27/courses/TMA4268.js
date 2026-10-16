@@ -7,9 +7,13 @@ defineCourse({
 
   lectures: [],
 
+  required: null,  // exercises needed for approval, e.g. 8 (null = all mandatory ones)
+
   exercises: [],
 
   exam: null,
+
+  materials: [],
 
   notes: [],
 });

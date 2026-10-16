@@ -10,17 +10,25 @@ defineCourse({
     { day: "Tuesday",   start: "08:15", end: "11:00", type: "Exercise" },
   ],
 
+  required: null,  // exercises needed for approval, e.g. 8 (null = all mandatory ones)
+
   exercises: [
-    { due: "2026-09-04", name: "Øving 0",  done: false },
-    { due: "2026-09-04", name: "Øving 1",  done: false },
-    { due: "2026-09-11", name: "Øving 2",  done: false },
-    { due: "2026-09-25", name: "Øving 3",  done: false },
-    { due: "2026-10-23", name: "Prosjekt", done: false },
-    { due: "2026-10-30", name: "Øving 4",  done: false },
-    { due: "2026-11-13", name: "Øving 5",  done: false },
+    { due: "2026-09-04", name: "Øving 0",  status: "todo", optional: true },
+    { due: "2026-09-04", name: "Øving 1",  status: "todo", optional: true },
+    { due: "2026-09-11", name: "Øving 2",  status: "todo", optional: true },
+    { due: "2026-09-25", name: "Øving 3",  status: "todo", optional: true },
+    { due: "2026-10-23", name: "Prosjekt", status: "todo" },
+    { due: "2026-10-30", name: "Øving 4",  status: "todo", optional: true },
+    { due: "2026-11-13", name: "Øving 5",  status: "todo", optional: true },
   ],
 
   exam: { date: "2026-12-17", time: "09:00" },
+
+  materials: [
+    { title: "An Introduction to Bioinformatics Algorithms", note: "Neil C. Jones & Pavel A. Pevzner · MIT Press, 2004" },
+    { title: "Algorithms on Strings, Trees, and Sequences: Computer Science and Computational Biology", note: "Dan Gusfield · Cambridge University Press, 1997" },
+    { title: "Slides fra forelesninger" },
+  ],
 
   notes: [],
 });

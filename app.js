@@ -11,14 +11,14 @@
 // these pages is drawn, chosen by the URL hash:
 //
 //   #overview            stats, today's lectures, course cards
-//   #main                weekly calendar of main lectures
-//   #exercise            weekly calendar of exercise lectures
+//   #week                week plan: lectures + exercise lectures, with toggles
 //   #deadlines           mandatory exercises due in the next 2 weeks
 //   #exams               exam dates
-//   #course/TDT4120      one course
+//   #course/TDT4120      one course (exercises can be edited here)
 //
-// Exercise checkboxes and the last opened semester are saved
-// in the browser (localStorage).
+// Exercise progress and edits are saved in the course files by
+// serve.py. View settings (toggles, last opened semester) are
+// remembered in the browser.
 // =========================================================
 
 // Filled in from semesters/index.js on startup
@@ -35,25 +35,25 @@ const CALENDAR_START_MINUTES = 7 * 60;  // 07:00
 const CALENDAR_END_MINUTES = 21 * 60;   // 21:00
 const DEADLINE_WINDOW_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MS_PER_HOUR = 60 * 60 * 1000;
 
 const TABS = [
   { id: "overview", label: "Overview" },
-  { id: "main", label: "Main lectures" },
-  { id: "exercise", label: "Exercise lectures" },
+  { id: "week", label: "Week plan" },
   { id: "deadlines", label: "Mandatory exercises" },
   { id: "exams", label: "Exam dates" },
 ];
 
 
-
 // ---------------------------------------------------------
-// Browser settings ("hide completed" toggle, last opened semester)
+// Browser settings (view settings only)
 // ---------------------------------------------------------
-// These are only view settings. Exercise progress is NOT stored
-// here: it lives in the course files (see "Saving ticks" below).
+// Exercise progress is NOT stored here: it lives in the course
+// files (see "Saving exercises" below).
 
 const STORAGE_KEY_HIDE_COMPLETED = "studieplan.hideDone";
 const STORAGE_KEY_SEMESTER = "studieplan.semester";
+const STORAGE_KEY_WEEK_FILTERS = "studieplan.weekFilters";
 
 function loadSetting(key, fallback) {
   try {
@@ -74,90 +74,14 @@ function saveSetting(key, value) {
 
 let hideCompleted = loadSetting(STORAGE_KEY_HIDE_COMPLETED, true);
 
+// Week plan toggles: which lecture types to show, and which courses are hidden.
+let weekFilters = Object.assign(
+  { showMain: true, showExercise: true, hiddenCourses: [] },
+  loadSetting(STORAGE_KEY_WEEK_FILTERS, {})
+);
 
-// ---------------------------------------------------------
-// Saving ticks
-// ---------------------------------------------------------
-// The course files are the only record of which exercises are done.
-// When the page is started with `python3 serve.py`, ticking a box
-// asks serve.py to change `done:` in the course file. When index.html
-// is opened directly there is no server, so the boxes are read-only.
-
-let canSave = false;      // set on startup by checkServer()
-let saveErrorMessage = "";
-
-// Identifies an exercise in a checkbox: "TFY4107|Øving 9|2026-10-18"
-function exerciseId(course, exercise) {
-  return `${course.code}|${exercise.name}|${exercise.due}`;
-}
-
-function findExerciseById(id) {
-  for (const course of courses) {
-    for (const exercise of course.exercises) {
-      if (exerciseId(course, exercise) === id) {
-        return { course, exercise };
-      }
-    }
-  }
-  return null;
-}
-
-function isCompleted(course, exercise) {
-  return Boolean(exercise.done);
-}
-
-// True when serve.py is running (it answers /api/ping).
-async function checkServer() {
-  if (location.protocol === "file:") {
-    return false;
-  }
-  try {
-    const response = await fetch("/api/ping", { cache: "no-store" });
-    return response.ok;
-  } catch (error) {
-    return false;
-  }
-}
-
-// Updates the page right away, then saves to the course file.
-// If saving fails, the tick is undone and an error is shown.
-async function saveExerciseDone(course, exercise, done) {
-  exercise.done = done;
-  saveErrorMessage = "";
-  render();
-
-  try {
-    const response = await fetch("/api/exercise", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        semester: activeSemesterId,
-        courseFile: course.fileName,
-        due: exercise.due,
-        name: exercise.name,
-        done,
-      }),
-    });
-    if (!response.ok) {
-      const answer = await response.json().catch(() => ({}));
-      throw new Error(answer.error || `Server answered ${response.status}.`);
-    }
-  } catch (error) {
-    exercise.done = !done;
-    saveErrorMessage = `Could not save "${exercise.name}" for ${course.code}: ${error.message}`;
-    render();
-  }
-}
-
-// Shown next to exercise tables when ticking is turned off.
-function renderReadOnlyNote() {
-  if (canSave) {
-    return "";
-  }
-  return `<p class="read-only-note">
-    Ticking is turned off because the page was opened without the server.
-    Start it with <code>python3 serve.py</code> to save progress.
-  </p>`;
+function saveWeekFilters() {
+  saveSetting(STORAGE_KEY_WEEK_FILTERS, weekFilters);
 }
 
 
@@ -212,6 +136,13 @@ function parseDate(text) {
   return new Date(year, month - 1, day);
 }
 
+// Date -> "2026-10-18"
+function toDateText(date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 function startOfToday() {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -261,6 +192,356 @@ function courseLink(course) {
 
 function lectureTypeLabel(type) {
   return type === "Main" ? "Lecture" : "Exercise lecture";
+}
+
+
+// ---------------------------------------------------------
+// Exercises: status, deadlines, approval
+// ---------------------------------------------------------
+
+// An exercise's status is one of:
+//   "todo"  not submitted yet
+//   "done"  submitted on time — counts towards approval
+//   "late"  submitted after the deadline — handled, but does NOT count
+function exerciseStatus(exercise) {
+  if (exercise.status === "done" || exercise.status === "late") {
+    return exercise.status;
+  }
+  return "todo";
+}
+
+// "Completed" = nothing more to do (done or late). Used for deadlines,
+// overdue warnings and "hide completed".
+function isCompleted(exercise) {
+  return exerciseStatus(exercise) !== "todo";
+}
+
+// The exact moment an exercise is due. Exercises without a `time`
+// are due at the end of the day.
+function dueDateTime(exercise) {
+  const date = parseDate(exercise.due);
+  const [hours, minutes] = (exercise.time || "23:59").split(":").map(Number);
+  date.setHours(hours, minutes, 59, 999);
+  return date;
+}
+
+// True when the deadline (date + time) has passed.
+function isPastDue(exercise) {
+  return dueDateTime(exercise) < new Date();
+}
+
+// Sort helper: earliest deadline first
+function compareByDue(a, b) {
+  return dueDateTime(a) - dueDateTime(b);
+}
+
+// "Sun, 18 Oct" or "Sun, 18 Oct · 14:00"
+function formatDue(exercise) {
+  const date = formatDate(parseDate(exercise.due));
+  return exercise.time ? `${date} · ${exercise.time}` : date;
+}
+
+// "in 3 days", "today", or — when a time is set and it's less
+// than a day away — "in 5 h" / "in 40 min".
+function describeDue(exercise) {
+  const msLeft = dueDateTime(exercise) - new Date();
+  if (exercise.time && msLeft > 0 && msLeft < MS_PER_DAY) {
+    const hours = Math.floor(msLeft / MS_PER_HOUR);
+    if (hours >= 1) {
+      return `in ${hours} h`;
+    }
+    return `in ${Math.max(1, Math.round(msLeft / 60000))} min`;
+  }
+  return describeDaysAway(daysUntil(exercise.due));
+}
+
+// Voluntary exercises (`optional: true` in the course file) are shown on
+// the course page, but never count towards approval, never show as
+// overdue, and are left out of the "Mandatory exercises" page.
+function isVoluntary(exercise) {
+  return exercise.optional === true;
+}
+
+function mandatoryExercises(course) {
+  return course.exercises.filter((exercise) => !isVoluntary(exercise));
+}
+
+// Approval progress for one course (mandatory exercises only).
+//   approved      exercises done on time
+//   late          exercises submitted late
+//   upcomingTodo  exercises not done whose deadline hasn't passed
+//   required      number needed for approval. `required: null` in the
+//                 course file means every mandatory exercise must be approved.
+//   stillNeeded   how many more must be approved
+//   atRisk        true if there aren't enough upcoming exercises left
+function approvalSummary(course) {
+  let approved = 0;
+  let late = 0;
+  let upcomingTodo = 0;
+
+  const mandatory = mandatoryExercises(course);
+
+  for (const exercise of mandatory) {
+    const status = exerciseStatus(exercise);
+    if (status === "done") {
+      approved++;
+    } else if (status === "late") {
+      late++;
+    } else if (!isPastDue(exercise)) {
+      upcomingTodo++;
+    }
+  }
+
+  const total = mandatory.length;
+  const required = typeof course.required === "number" ? course.required : total;
+  const stillNeeded = Math.max(0, required - approved);
+  const atRisk = stillNeeded > upcomingTodo;
+
+  return { approved, late, upcomingTodo, required, stillNeeded, atRisk, total };
+}
+
+
+// ---------------------------------------------------------
+// Saving exercises
+// ---------------------------------------------------------
+// The course files are the only record of exercises and their status.
+// When the page is started with `python3 serve.py`, every change
+// (Done/Late, edit, add, delete) sends the course's full exercise
+// list to serve.py, which rewrites `exercises: [...]` in the file.
+// When index.html is opened directly there is no server, so
+// everything is read-only.
+
+let canSave = false;      // set on startup by checkServer()
+let saveErrorMessage = "";
+let saveQueue = Promise.resolve();  // saves run one after another
+
+// Identifies an exercise in buttons: "TFY4107|Øving 9|2026-10-18"
+function exerciseId(course, exercise) {
+  return `${course.code}|${exercise.name}|${exercise.due}`;
+}
+
+function findExerciseById(id) {
+  for (const course of courses) {
+    for (const exercise of course.exercises) {
+      if (exerciseId(course, exercise) === id) {
+        return { course, exercise };
+      }
+    }
+  }
+  return null;
+}
+
+// True when serve.py is running (it answers /api/ping).
+async function checkServer() {
+  if (location.protocol === "file:") {
+    return false;
+  }
+  try {
+    const response = await fetch("/api/ping", { cache: "no-store" });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Only the fields that belong in the course file
+function cleanExercise(exercise) {
+  const clean = { due: exercise.due };
+  if (exercise.time) {
+    clean.time = exercise.time;
+  }
+  clean.name = exercise.name;
+  clean.status = exerciseStatus(exercise);
+  if (isVoluntary(exercise)) {
+    clean.optional = true;
+  }
+  return clean;
+}
+
+// Shows the new list right away, then saves it to the course file.
+// If saving fails, the old list is put back and an error is shown.
+function saveCourseExercises(course, newExercises) {
+  const previousExercises = course.exercises;
+  course.exercises = newExercises.slice().sort(compareByDue);
+  saveErrorMessage = "";
+  render();
+
+  saveQueue = saveQueue.then(async () => {
+    try {
+      const response = await fetch("/api/exercises", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          semester: activeSemesterId,
+          courseFile: course.fileName,
+          exercises: course.exercises.map(cleanExercise),
+        }),
+      });
+      if (!response.ok) {
+        const answer = await response.json().catch(() => ({}));
+        throw new Error(answer.error || `Server answered ${response.status}.`);
+      }
+    } catch (error) {
+      course.exercises = previousExercises;
+      saveErrorMessage = `Could not save ${course.code}: ${error.message}`;
+      render();
+    }
+  });
+}
+
+function setExerciseStatus(course, exercise, status) {
+  const newExercises = course.exercises.map((other) =>
+    other === exercise ? { ...other, status } : other
+  );
+  saveCourseExercises(course, newExercises);
+}
+
+// Shown next to exercise tables when saving is turned off.
+function renderReadOnlyNote() {
+  if (canSave) {
+    return "";
+  }
+  return `<p class="read-only-note">
+    Marking and editing exercises is turned off because the page was opened without the server.
+    Start it with <code>python3 serve.py</code> to save changes.
+  </p>`;
+}
+
+
+// ---------------------------------------------------------
+// Editing exercises (add / edit / delete)
+// ---------------------------------------------------------
+// While an exercise is being edited, its row turns into a small form.
+//   editing = { courseCode, exerciseId }   exerciseId is null when adding
+
+let editing = null;
+let editError = "";
+
+function startEditing(courseCode, id) {
+  editing = { courseCode, exerciseId: id };
+  editError = "";
+  render();
+  const firstInput = document.querySelector("[data-exercise-form] input");
+  if (firstInput) {
+    firstInput.focus();
+  }
+}
+
+function stopEditing() {
+  editing = null;
+  editError = "";
+  render();
+}
+
+// Suggested values for a new exercise, based on the course's last one:
+// "Øving 8" due 23 Oct -> "Øving 9" due 30 Oct, same time.
+function suggestNewExercise(course) {
+  const last = course.exercises.slice().sort(compareByDue).pop();
+  if (!last) {
+    return { name: "Øving 1", due: toDateText(startOfToday()), time: "" };
+  }
+
+  const match = last.name.match(/^(.*?)(\d+)$/);
+  const name = match ? `${match[1]}${Number(match[2]) + 1}` : "";
+
+  const nextDue = parseDate(last.due);
+  nextDue.setDate(nextDue.getDate() + 7);
+
+  return { name, due: toDateText(nextDue), time: last.time || "" };
+}
+
+function renderExerciseForm(course, exercise, columnCount) {
+  const isNew = exercise === null;
+  const values = isNew ? suggestNewExercise(course) : exercise;
+
+  return `
+    <tr class="edit-row" style="${hueStyle(course)}">
+      <td colspan="${columnCount}">
+        <form class="exercise-form" data-exercise-form data-course="${escapeHtml(course.code)}">
+          <div class="form-title">${isNew ? `New exercise in ${escapeHtml(course.code)}` : `Edit ${escapeHtml(exercise.name)}`}</div>
+          <div class="form-fields">
+            <label>Name
+              <input name="name" value="${escapeHtml(values.name || "")}" required>
+            </label>
+            <label>Due date
+              <input type="date" name="due" value="${escapeHtml(values.due || "")}" required>
+            </label>
+            <label>Time <span class="muted">(optional)</span>
+              <input type="time" name="time" value="${escapeHtml(values.time || "")}">
+            </label>
+          </div>
+          <label class="form-checkbox">
+            <input type="checkbox" name="voluntary" ${values.optional ? "checked" : ""}>
+            Voluntary <span class="muted">— doesn't count towards approval</span>
+          </label>
+          ${editError ? `<p class="form-error">${escapeHtml(editError)}</p>` : ""}
+          <div class="form-actions">
+            <button type="submit" class="button primary">${isNew ? "Add" : "Save"}</button>
+            <button type="button" class="button" data-edit-cancel>Cancel</button>
+            ${isNew ? "" : `<button type="button" class="button danger" data-edit-delete>Delete</button>`}
+          </div>
+        </form>
+      </td>
+    </tr>`;
+}
+
+function handleExerciseFormSubmit(form) {
+  const course = courseByCode[form.dataset.course];
+  if (!course || !editing) {
+    return;
+  }
+
+  const name = form.elements.name.value.trim();
+  const due = form.elements.due.value;
+  const time = form.elements.time.value;
+
+  if (!name || !due) {
+    editError = "Name and due date are required.";
+    render();
+    return;
+  }
+
+  const original = editing.exerciseId ? findExerciseById(editing.exerciseId).exercise : null;
+  const duplicate = course.exercises.some((other) =>
+    other !== original && other.name === name && other.due === due
+  );
+  if (duplicate) {
+    editError = `${course.code} already has "${name}" due ${due}.`;
+    render();
+    return;
+  }
+
+  const updated = { due, name, status: original ? exerciseStatus(original) : "todo" };
+  if (time) {
+    updated.time = time;
+  }
+  if (form.elements.voluntary.checked) {
+    updated.optional = true;
+  }
+
+  const newExercises = original
+    ? course.exercises.map((other) => (other === original ? updated : other))
+    : [...course.exercises, updated];
+
+  editing = null;
+  editError = "";
+  saveCourseExercises(course, newExercises);
+}
+
+// The first click asks for confirmation, the second deletes.
+function handleExerciseDelete(button) {
+  if (!editing || !editing.exerciseId) {
+    return;
+  }
+  if (!button.dataset.confirm) {
+    button.dataset.confirm = "yes";
+    button.textContent = "Click again to delete";
+    return;
+  }
+
+  const { course, exercise } = findExerciseById(editing.exerciseId);
+  editing = null;
+  saveCourseExercises(course, course.exercises.filter((other) => other !== exercise));
 }
 
 
@@ -400,7 +681,7 @@ async function loadSemester(id) {
   results.forEach((result, index) => {
     if (result.status === "fulfilled") {
       const course = result.value;
-      course.fileName = courseNames[index];  // needed when saving ticks
+      course.fileName = courseNames[index];  // needed when saving
       semester.courses.push(course);
     } else {
       semester.problems.push(result.reason.message);
@@ -421,7 +702,7 @@ function setActiveSemester(id, data) {
     // Courses without a colour get evenly spread hues.
     course.hue = course.color ? hexToHue(course.color) : Math.round((index * 137.5) % 360);
     course.lectures = course.lectures || [];
-    course.exercises = course.exercises || [];
+    course.exercises = (course.exercises || []).slice().sort(compareByDue);
     course.notes = course.notes || [];
     courseByCode[course.code] = course;
   });
@@ -432,6 +713,7 @@ async function openSemester(id) {
     const data = await loadSemester(id);
     setActiveSemester(id, data);
     rememberOpenSemester(id);
+    editing = null;
     render();
   } catch (error) {
     document.getElementById("content").innerHTML =
@@ -444,31 +726,33 @@ async function openSemester(id) {
 // Collecting data across all courses
 // ---------------------------------------------------------
 
-// Every exercise of every course, sorted by due date.
+function exerciseItem(course, exercise) {
+  return {
+    course,
+    exercise,
+    daysLeft: daysUntil(exercise.due),
+    completed: isCompleted(exercise),
+    pastDue: isPastDue(exercise),
+  };
+}
+
+// Every exercise of every course, earliest deadline first.
 function getAllExercises() {
   const result = [];
   for (const course of courses) {
-    for (const exercise of course.exercises) {
-      result.push({
-        course,
-        exercise,
-        daysLeft: daysUntil(exercise.due),
-        completed: isCompleted(course, exercise),
-      });
+    for (const exercise of mandatoryExercises(course)) {
+      result.push(exerciseItem(course, exercise));
     }
   }
-  result.sort((a, b) => a.daysLeft - b.daysLeft || a.course.code.localeCompare(b.course.code));
+  result.sort((a, b) => compareByDue(a.exercise, b.exercise) || a.course.code.localeCompare(b.course.code));
   return result;
 }
 
-// Every lecture of every course. Pass "Main" or "Exercise" to filter.
-function getAllLectures(type) {
+// Every lecture of every course, with start/end in minutes.
+function getAllLectures() {
   const result = [];
   for (const course of courses) {
     for (const lecture of course.lectures) {
-      if (type && lecture.type !== type) {
-        continue;
-      }
       result.push({
         course,
         ...lecture,
@@ -508,35 +792,96 @@ function renderChip(course, { asLink = true, active = false } = {}) {
   return `<a class="${classes}" style="${hueStyle(course)}" href="${courseLink(course)}">${inner}</a>`;
 }
 
-// One row in an exercise table.
+// The "Done" / "Late" buttons for one exercise, plus an edit button.
+// Pressing the active button again sets the exercise back to "todo".
+function renderStatusButtons(course, exercise) {
+  const status = exerciseStatus(exercise);
+  const id = escapeHtml(exerciseId(course, exercise));
+  const disabled = canSave ? "" : "disabled";
+
+  const button = (value, label, tooltip) => `
+    <button type="button"
+            class="status-button ${value} ${status === value ? "active" : ""}"
+            data-exercise-id="${id}" data-set-status="${value}"
+            aria-pressed="${status === value}" title="${tooltip}" ${disabled}>${label}</button>`;
+
+  const editButton = canSave
+    ? `<button type="button" class="edit-button" data-edit-exercise="${id}"
+               data-course="${escapeHtml(course.code)}" title="Edit or delete" aria-label="Edit">✎</button>`
+    : "";
+
+  return `
+    <div class="status-buttons" role="group" aria-label="Status">
+      ${button("done", "Done", "Submitted on time (counts towards approval)")}
+      ${button("late", "Late", "Submitted late (does not count towards approval)")}
+    </div>
+    ${editButton}`;
+}
+
+// One row in an exercise table (or its edit form, while being edited).
 function renderExerciseRow(item, showCourseColumn) {
-  const { course, exercise, daysLeft, completed } = item;
+  const { course, exercise, daysLeft, completed, pastDue } = item;
+  const columnCount = showCourseColumn ? 4 : 3;
+
+  if (editing && editing.exerciseId === exerciseId(course, exercise)) {
+    return renderExerciseForm(course, exercise, columnCount);
+  }
+
+  const status = exerciseStatus(exercise);
+
+  const voluntary = isVoluntary(exercise);
 
   let urgencyClass = "";
-  if (!completed && daysLeft < 0) {
+  if (!completed && !voluntary && pastDue) {
     urgencyClass = "overdue";
-  } else if (!completed && daysLeft <= 3) {
+  } else if (!completed && !voluntary && daysLeft <= 3) {
     urgencyClass = "soon";
   }
 
   const courseCell = showCourseColumn ? `<td>${renderChip(course)}</td>` : "";
+  const lateTag = status === "late" ? `<span class="late-tag">submitted late</span>` : "";
+  const voluntaryTag = voluntary ? `<span class="voluntary-tag">voluntary</span>` : "";
 
   return `
-    <tr class="exercise-row ${completed ? "completed" : ""}" style="${hueStyle(course)}">
+    <tr class="exercise-row ${completed ? "completed" : ""} ${voluntary ? "voluntary" : ""} ${status}" style="${hueStyle(course)}">
       ${courseCell}
-      <td class="exercise-name">${escapeHtml(exercise.name)}</td>
+      <td><span class="exercise-name">${escapeHtml(exercise.name)}</span>${lateTag}${voluntaryTag}</td>
       <td class="tabular">
-        ${formatDate(parseDate(exercise.due))}
-        <span class="relative-date ${urgencyClass}">${describeDaysAway(daysLeft)}</span>
+        ${formatDue(exercise)}
+        <span class="relative-date ${urgencyClass}">${describeDue(exercise)}</span>
       </td>
-      <td class="checkbox-cell">
-        <input type="checkbox"
-               data-exercise-id="${escapeHtml(exerciseId(course, exercise))}"
-               ${completed ? "checked" : ""}
-               ${canSave ? "" : "disabled"}
-               aria-label="Completed">
-      </td>
+      <td class="status-cell">${renderStatusButtons(course, exercise)}</td>
     </tr>`;
+}
+
+// One line under a course's exercise heading, e.g.
+// "6 of 8 approved · 1 late · 2 more needed, 5 left"
+function renderApprovalLine(course) {
+  const summary = approvalSummary(course);
+  if (summary.total === 0) {
+    return "";
+  }
+
+  const lateText = summary.late > 0 ? ` · ${summary.late} late` : "";
+  const allText = typeof course.required === "number" ? "" : ` <span class="muted">(all required)</span>`;
+
+  let status;
+  if (summary.stillNeeded === 0) {
+    status = `<span class="approval-ok">Approved ✓</span>`;
+  } else if (summary.atRisk) {
+    status = `<span class="approval-risk">${summary.stillNeeded} more needed, but only ${summary.upcomingTodo} left</span>`;
+  } else {
+    status = `${summary.stillNeeded} more needed, ${summary.upcomingTodo} left`;
+  }
+
+  // "8 approved (7 required)" once the requirement is met, otherwise "6 of 8 approved"
+  const countText = summary.stillNeeded === 0 && summary.approved > summary.required
+    ? `<strong>${summary.approved}</strong> approved <span class="muted">(${summary.required} required)</span>`
+    : `<strong>${summary.approved} of ${summary.required}</strong> approved${allText}`;
+
+  return `<p class="approval-line">
+    ${countText}${lateText} · ${status}
+  </p>`;
 }
 
 
@@ -583,6 +928,7 @@ function renderCalendarEvent(lecture) {
   const topHours = (lecture.startMinutes - CALENDAR_START_MINUTES) / 60;
   const durationHours = (lecture.endMinutes - lecture.startMinutes) / 60;
   const { column, columnCount, course } = lecture;
+  const isExercise = lecture.type !== "Main";
 
   const position = [
     `top: calc(${topHours} * var(--hour-height) + 1px)`,
@@ -591,21 +937,20 @@ function renderCalendarEvent(lecture) {
     `width: calc(100% / ${columnCount} - 6px)`,
   ].join("; ");
 
-  // Only show the full course name when the block has room for it.
-  const showName = durationHours >= 1.6 && columnCount < 3;
-  const tooltip = `${course.code} ${course.name} · ${lecture.start}–${lecture.end}`;
+  // Only show extra text when the block has room for it.
+  const roomy = durationHours >= 1.6 && columnCount < 3;
+  const tooltip = `${course.code} ${course.name} · ${lectureTypeLabel(lecture.type)} · ${lecture.start}–${lecture.end}`;
 
   return `
-    <a class="calendar-event course-tint" href="${courseLink(course)}"
+    <a class="calendar-event course-tint ${isExercise ? "exercise" : "main"} ${columnCount >= 3 ? "narrow" : ""}" href="${courseLink(course)}"
        title="${escapeHtml(tooltip)}" style="${hueStyle(course)}; ${position}">
       <span class="calendar-event-code">${escapeHtml(course.code)}</span>
       <span class="tabular">${lecture.start}–${lecture.end}</span>
-      ${showName ? `<div class="calendar-event-name">${escapeHtml(course.name)}</div>` : ""}
+      ${roomy ? `<div class="calendar-event-name">${isExercise ? "Exercise lecture" : escapeHtml(course.name)}</div>` : ""}
     </a>`;
 }
 
-function renderCalendar(lectureType) {
-  const lectures = getAllLectures(lectureType);
+function renderCalendar(lectures) {
   const today = todayWeekdayName();
   const nowMinutes = minutesSinceMidnight();
   const hourCount = (CALENDAR_END_MINUTES - CALENDAR_START_MINUTES) / 60;
@@ -658,15 +1003,15 @@ function renderCalendar(lectureType) {
 
 function renderOverviewPage() {
   const exercises = getAllExercises();
-  const openExercises = exercises.filter((item) => !item.completed && item.daysLeft >= 0);
-  const overdueCount = exercises.filter((item) => !item.completed && item.daysLeft < 0).length;
+  const openExercises = exercises.filter((item) => !item.completed && !item.pastDue);
+  const overdueCount = exercises.filter((item) => !item.completed && item.pastDue).length;
   const nextDeadline = openExercises[0];
   const nextExam = getUpcomingExams()[0];
 
   // --- Stats row ---
   const nextDeadlineHtml = nextDeadline
     ? `<div class="stat-value">${escapeHtml(nextDeadline.course.code)} · ${escapeHtml(nextDeadline.exercise.name)}</div>
-       <div class="stat-detail">${formatDate(parseDate(nextDeadline.exercise.due))} · ${describeDaysAway(nextDeadline.daysLeft)}</div>`
+       <div class="stat-detail">${formatDue(nextDeadline.exercise)} · ${describeDue(nextDeadline.exercise)}</div>`
     : `<div class="stat-value">Nothing due</div>`;
 
   const nextExamHtml = nextExam
@@ -675,7 +1020,7 @@ function renderOverviewPage() {
     : `<div class="stat-value">${anyExamDates() ? "No exams left" : "No exam dates yet"}</div>`;
 
   const overdueHtml = overdueCount > 0
-    ? `<span class="relative-date overdue" style="margin: 0">${overdueCount} overdue, not ticked</span>`
+    ? `<span class="relative-date overdue" style="margin: 0">${overdueCount} overdue, not marked</span>`
     : "none overdue";
 
   let html = `
@@ -711,12 +1056,24 @@ function renderOverviewPage() {
     html += `<div class="empty">No lectures.</div>`;
   }
   for (const lecture of lecturesToday) {
-    const finished = isWeekday && lecture.endMinutes < nowMinutes;
+    const finished = isWeekday && lecture.endMinutes <= nowMinutes;
+    const live = isWeekday && lecture.startMinutes <= nowMinutes && nowMinutes < lecture.endMinutes;
+
+    // While a lecture is on: a thin bar along the bottom showing
+    // how far into the lecture we are (the green colour comes from CSS).
+    let liveHtml = "";
+    if (live) {
+      const progress = ((nowMinutes - lecture.startMinutes) / (lecture.endMinutes - lecture.startMinutes)) * 100;
+      liveHtml = `<span class="live-progress" style="width: ${progress}%"></span>`;
+    }
+
+    const classes = ["today-item", finished ? "finished" : "", live ? "live" : ""].join(" ");
     html += `
-      <a class="today-item ${finished ? "finished" : ""}" href="${courseLink(lecture.course)}">
+      <a class="${classes}" href="${courseLink(lecture.course)}">
         <span class="today-time">${lecture.start}–${lecture.end}</span>
         ${renderChip(lecture.course, { asLink: false })}
         <span class="today-course-name">${escapeHtml(lecture.course.name)}</span>
+        ${liveHtml}
         <span class="today-type">${lectureTypeLabel(lecture.type)}</span>
       </a>`;
   }
@@ -733,14 +1090,21 @@ function renderOverviewPage() {
 }
 
 function renderCourseCard(course) {
-  const total = course.exercises.length;
-  const completedCount = course.exercises.filter((exercise) => isCompleted(course, exercise)).length;
-  const progressPercent = total > 0 ? (completedCount / total) * 100 : 0;
+  const summary = approvalSummary(course);
 
-  const nextExercise = course.exercises
-    .filter((exercise) => !isCompleted(course, exercise) && daysUntil(exercise.due) >= 0)
-    .sort((a, b) => daysUntil(a.due) - daysUntil(b.due))[0];
+  let approvalText = course.exercises.length > 0 ? "None mandatory" : "None added";
+  let progressPercent = 0;
+  if (summary.total > 0) {
+    const lateText = summary.late > 0 ? ` <span class="muted">(+${summary.late} late)</span>` : "";
+    if (summary.stillNeeded === 0) {
+      approvalText = `<span class="approval-ok">${Math.min(summary.approved, summary.required)} / ${summary.required} ✓</span>${lateText}`;
+    } else {
+      approvalText = `<span class="${summary.atRisk ? "approval-risk" : ""}">${summary.approved} / ${summary.required}</span>${lateText}`;
+    }
+    progressPercent = summary.required > 0 ? Math.min(100, (summary.approved / summary.required) * 100) : 100;
+  }
 
+  const nextExercise = mandatoryExercises(course).find((exercise) => !isCompleted(exercise) && !isPastDue(exercise));
   const nextDueText = nextExercise
     ? `${escapeHtml(nextExercise.name)} · ${formatShortDate(nextExercise.due)}`
     : "—";
@@ -755,37 +1119,69 @@ function renderCourseCard(course) {
     <a class="panel course-card" style="${hueStyle(course)}" href="${courseLink(course)}">
       <div class="course-card-code">${escapeHtml(course.code)}</div>
       <div class="course-card-name">${escapeHtml(course.name)}</div>
-      <div class="info-row"><span>Exercises</span><span class="tabular">${total > 0 ? `${completedCount} / ${total}` : "None added"}</span></div>
+      <div class="info-row"><span>Approved</span><span class="tabular">${approvalText}</span></div>
       <div class="progress-bar"><div class="progress-bar-fill" style="width: ${progressPercent}%"></div></div>
       <div class="info-row"><span>Next due</span><span>${nextDueText}</span></div>
       <div class="info-row"><span>Exam</span><span>${examText}</span></div>
     </a>`;
 }
 
-function renderMainLecturesPage() {
-  return `
-    <h2>Main lectures</h2>
-    <p class="lede">Weekly calendar. Overlapping lectures sit side by side. Click a block to open the course.</p>
-    ${renderCalendar("Main")}`;
-}
+function renderWeekPage() {
+  const hidden = new Set(weekFilters.hiddenCourses);
 
-function renderExerciseLecturesPage() {
+  const lectures = getAllLectures().filter((lecture) => {
+    if (hidden.has(lecture.course.code)) return false;
+    if (lecture.type === "Main") return weekFilters.showMain;
+    return weekFilters.showExercise;
+  });
+
+  const typeToggle = (key, label, className) => `
+    <button type="button" class="toggle ${className} ${weekFilters[key] ? "on" : ""}"
+            data-toggle-type="${key}" aria-pressed="${weekFilters[key]}">
+      <span class="toggle-swatch"></span>${label}
+    </button>`;
+
+  const courseToggles = courses.map((course) => {
+    const on = !hidden.has(course.code);
+    return `
+      <button type="button" class="chip course-tint course-toggle ${on ? "" : "off"}" style="${hueStyle(course)}"
+              data-toggle-course="${escapeHtml(course.code)}" aria-pressed="${on}" title="${escapeHtml(course.name)}">
+        <span class="chip-dot"></span>${escapeHtml(course.code)}
+      </button>`;
+  }).join("");
+
+  const showAll = hidden.size > 0
+    ? `<button type="button" class="link-button" data-show-all-courses>Show all</button>`
+    : "";
+
   return `
-    <h2>Exercise lectures</h2>
-    <p class="lede">Weekly calendar of exercise lectures (øvingsforelesninger).</p>
-    ${renderCalendar("Exercise")}`;
+    <h2>Week plan</h2>
+    <p class="lede">Lectures and exercise lectures together. Overlapping ones sit side by side. Click a block to open the course.</p>
+    <div class="week-toggles">
+      <div class="toggle-row">
+        ${typeToggle("showMain", "Lectures", "type-main")}
+        ${typeToggle("showExercise", "Exercise lectures", "type-exercise")}
+      </div>
+      <div class="toggle-row">${courseToggles}${showAll}</div>
+    </div>
+    ${courses.length > 0 && lectures.length === 0 && getAllLectures().length > 0
+      ? `<p class="empty">Everything is toggled off.</p>` : ""}
+    ${renderCalendar(lectures)}`;
 }
 
 function renderDeadlinesPage() {
   const exercises = getAllExercises();
 
+  // Due within the window. Unfinished exercises whose deadline already
+  // passed today go to the "past due" list instead.
   const dueSoon = exercises.filter((item) => {
     const inWindow = item.daysLeft >= 0 && item.daysLeft <= DEADLINE_WINDOW_DAYS;
+    const missed = item.pastDue && !item.completed;
     const hidden = hideCompleted && item.completed;
-    return inWindow && !hidden;
+    return inWindow && !missed && !hidden;
   });
 
-  const overdue = exercises.filter((item) => item.daysLeft < 0 && !item.completed);
+  const overdue = exercises.filter((item) => item.pastDue && !item.completed);
 
   const windowEnd = new Date(startOfToday().getTime() + DEADLINE_WINDOW_DAYS * MS_PER_DAY);
 
@@ -798,7 +1194,8 @@ function renderDeadlinesPage() {
     <h2>Mandatory exercises</h2>
     <p class="lede">
       Due in the next 2 weeks (to ${formatDate(windowEnd)}).
-      Ticking an exercise saves it in the course file.
+      Press <em>Done</em> or <em>Late</em> to save it in the course file —
+      late submissions don't count towards approval. ✎ edits an exercise.
     </p>
     ${renderReadOnlyNote()}
     <div class="toolbar">
@@ -810,16 +1207,18 @@ function renderDeadlinesPage() {
     <div class="panel">
       <table>
         <thead>
-          <tr><th>Course</th><th>Exercise</th><th>Due</th><th>Done</th></tr>
+          <tr><th>Course</th><th>Exercise</th><th>Due</th><th>Status</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
 
   if (overdue.length > 0) {
+    // Keep the list open while one of its exercises is being edited.
+    const editingInside = editing && overdue.some((item) => editing.exerciseId === exerciseId(item.course, item.exercise));
     html += `
-      <details>
-        <summary>${overdue.length} past due and not ticked</summary>
+      <details ${editingInside ? "open" : ""}>
+        <summary>${overdue.length} past due and not marked</summary>
         <div class="panel">
           <table>
             <tbody>${overdue.map((item) => renderExerciseRow(item, true)).join("")}</tbody>
@@ -898,21 +1297,21 @@ function renderCoursePage(courseCode) {
     lectureRows = `<tr><td colspan="3" class="empty">No lectures.</td></tr>`;
   }
 
-  // Exercises, sorted by due date
-  const exercises = course.exercises
-    .map((exercise) => ({
-      course,
-      exercise,
-      daysLeft: daysUntil(exercise.due),
-      completed: isCompleted(course, exercise),
-    }))
-    .sort((a, b) => a.daysLeft - b.daysLeft);
-  const completedCount = exercises.filter((item) => item.completed).length;
+  // Exercises (already sorted by deadline), plus the "add" form when adding
+  const exercises = course.exercises.map((exercise) => exerciseItem(course, exercise));
 
   let exerciseRows = exercises.map((item) => renderExerciseRow(item, false)).join("");
-  if (exercises.length === 0) {
-    exerciseRows = `<tr><td colspan="3" class="empty">None.</td></tr>`;
+  const addingHere = editing && editing.exerciseId === null && editing.courseCode === course.code;
+  if (exercises.length === 0 && !addingHere) {
+    exerciseRows = `<tr><td colspan="3" class="empty">None yet.</td></tr>`;
   }
+  if (addingHere) {
+    exerciseRows += renderExerciseForm(course, null, 3);
+  }
+
+  const addButton = canSave && !addingHere
+    ? `<button type="button" class="button add-button" data-add-exercise="${escapeHtml(course.code)}">+ Add exercise</button>`
+    : "";
 
   // Exam
   let examHtml = `<div class="stat-detail">Not set</div>`;
@@ -924,6 +1323,23 @@ function renderCoursePage(courseCode) {
       <div class="stat-value">${fullDate} · ${escapeHtml(course.exam.time || "")}</div>
       <div class="stat-detail">${describeDaysAway(daysUntil(course.exam.date))}</div>`;
   }
+
+  // Course material: title (a link if it has a url) and an optional note
+  const materials = course.materials || [];
+  let materialItems = materials.map((item) => {
+    const safeUrl = item.url && /^https?:\/\//.test(item.url) ? item.url : null;
+    const title = safeUrl
+      ? `<a class="material-link" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">${escapeHtml(item.title)} ↗</a>`
+      : `<span class="material-title">${escapeHtml(item.title)}</span>`;
+    const note = item.note ? `<span class="material-note">${escapeHtml(item.note)}</span>` : "";
+    return `<li>${title}${note}</li>`;
+  }).join("");
+  if (materials.length === 0) {
+    materialItems = `<li class="muted">None listed yet.</li>`;
+  }
+  const materialsHtml = `
+    <h3 class="section-title">Course material</h3>
+    <div class="panel"><ul class="materials">${materialItems}</ul></div>`;
 
   // Notes
   let notesHtml = "";
@@ -953,40 +1369,47 @@ function renderCoursePage(courseCode) {
         <h3 class="section-title">Exam</h3>
         <div class="panel stat">${examHtml}</div>
 
+        ${materialsHtml}
+
         ${notesHtml}
       </div>
 
       <div>
-        <h3 class="section-title">Mandatory exercises · ${completedCount}/${exercises.length} done</h3>
-        ${exercises.length > 0 ? renderReadOnlyNote() : ""}
+        <h3 class="section-title">${course.exercises.some(isVoluntary) ? "Exercises" : "Mandatory exercises"}</h3>
+        ${renderApprovalLine(course)}
+        ${renderReadOnlyNote()}
         <div class="panel">
           <table>
-            <thead><tr><th>Exercise</th><th>Due</th><th>Done</th></tr></thead>
+            <thead><tr><th>Exercise</th><th>Due</th><th>Status</th></tr></thead>
             <tbody>${exerciseRows}</tbody>
           </table>
         </div>
+        ${addButton}
       </div>
     </div>`;
 }
 
 const PAGES = {
   overview: renderOverviewPage,
-  main: renderMainLecturesPage,
-  exercise: renderExerciseLecturesPage,
+  week: renderWeekPage,
   deadlines: renderDeadlinesPage,
   exams: renderExamsPage,
   course: renderCoursePage,
 };
 
+// Old addresses that now point to the week plan
+const PAGE_ALIASES = { main: "week", exercise: "week" };
+
 
 // ---------------------------------------------------------
-// Drawing the page and handling clicks
+// Drawing the page
 // ---------------------------------------------------------
 
 // "#course/TDT4120" -> { page: "course", argument: "TDT4120" }
 function readRoute() {
   const hash = decodeURIComponent(location.hash.slice(1)) || "overview";
-  const [page, argument] = hash.split("/");
+  let [page, argument] = hash.split("/");
+  page = PAGE_ALIASES[page] || page;
 
   // Unknown page, or a course that isn't in this semester -> overview
   if (!(page in PAGES) || (page === "course" && !courseByCode[argument])) {
@@ -1036,14 +1459,6 @@ function renderNavigation(route) {
     .join("");
 }
 
-function render() {
-  const route = readRoute();
-  renderHeader();
-  renderNavigation(route);
-  renderLoadProblems();
-  document.getElementById("content").innerHTML = PAGES[route.page](route.argument);
-}
-
 // Shows warnings: course files that couldn't be loaded, and a failed save.
 function renderLoadProblems() {
   let html = "";
@@ -1060,50 +1475,138 @@ function renderLoadProblems() {
   document.getElementById("load-problems").innerHTML = html;
 }
 
-document.addEventListener("change", (event) => {
-  const input = event.target;
+function render() {
+  const route = readRoute();
+  renderHeader();
+  renderNavigation(route);
+  renderLoadProblems();
+  document.getElementById("content").innerHTML = PAGES[route.page](route.argument);
+}
 
-  if (input.id === "hide-completed") {
-    hideCompleted = input.checked;
+
+// ---------------------------------------------------------
+// Clicks and other events
+// ---------------------------------------------------------
+
+document.addEventListener("change", (event) => {
+  if (event.target.id === "hide-completed") {
+    hideCompleted = event.target.checked;
     saveSetting(STORAGE_KEY_HIDE_COMPLETED, hideCompleted);
+    render();
+  }
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-exercise-form]");
+  if (form) {
+    event.preventDefault();
+    handleExerciseFormSubmit(form);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && editing) {
+    stopEditing();
+  }
+});
+
+// All button clicks, by what the button is for
+document.addEventListener("click", (event) => {
+  const target = event.target;
+
+  // "Done" / "Late". Pressing the active one again sets it back to "todo".
+  const statusButton = target.closest("[data-set-status]");
+  if (statusButton && !statusButton.disabled) {
+    const found = findExerciseById(statusButton.dataset.exerciseId);
+    if (found) {
+      const pressed = statusButton.dataset.setStatus;
+      const newStatus = exerciseStatus(found.exercise) === pressed ? "todo" : pressed;
+      setExerciseStatus(found.course, found.exercise, newStatus);
+    }
+    return;
+  }
+
+  // ✎ edit, + add, cancel, delete
+  const editButton = target.closest("[data-edit-exercise]");
+  if (editButton) {
+    startEditing(editButton.dataset.course, editButton.dataset.editExercise);
+    return;
+  }
+  const addButton = target.closest("[data-add-exercise]");
+  if (addButton) {
+    startEditing(addButton.dataset.addExercise, null);
+    return;
+  }
+  if (target.closest("[data-edit-cancel]")) {
+    stopEditing();
+    return;
+  }
+  const deleteButton = target.closest("[data-edit-delete]");
+  if (deleteButton) {
+    handleExerciseDelete(deleteButton);
+    return;
+  }
+
+  // Week plan toggles
+  const typeToggle = target.closest("[data-toggle-type]");
+  if (typeToggle) {
+    const key = typeToggle.dataset.toggleType;
+    weekFilters[key] = !weekFilters[key];
+    saveWeekFilters();
+    render();
+    return;
+  }
+  const courseToggle = target.closest("[data-toggle-course]");
+  if (courseToggle) {
+    const code = courseToggle.dataset.toggleCourse;
+    const hidden = new Set(weekFilters.hiddenCourses);
+    if (hidden.has(code)) {
+      hidden.delete(code);
+    } else {
+      hidden.add(code);
+    }
+    weekFilters.hiddenCourses = [...hidden];
+    saveWeekFilters();
+    render();
+    return;
+  }
+  if (target.closest("[data-show-all-courses]")) {
+    weekFilters.hiddenCourses = [];
+    saveWeekFilters();
     render();
     return;
   }
 
-  if (input.dataset.exerciseId) {
-    const found = findExerciseById(input.dataset.exerciseId);
-    if (found) {
-      saveExerciseDone(found.course, found.exercise, input.checked);
+  // Semester switcher
+  const semesterButton = target.closest("[data-semester]");
+  if (semesterButton && semesterButton.dataset.semester !== activeSemesterId) {
+    // A course page from one semester doesn't exist in the other, so go to the overview.
+    if (readRoute().page === "course") {
+      history.replaceState(null, "", "#overview");
     }
+    openSemester(semesterButton.dataset.semester);
   }
-});
-
-document.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-semester]");
-  if (!button || button.dataset.semester === activeSemesterId) {
-    return;
-  }
-
-  // A course page from one semester doesn't exist in the other, so go to the overview.
-  if (readRoute().page === "course") {
-    history.replaceState(null, "", "#overview");
-  }
-  openSemester(button.dataset.semester);
 });
 
 window.addEventListener("hashchange", () => {
+  editing = null;
   render();
   window.scrollTo(0, 0);
 });
 
-// Re-draw every minute so "today", countdowns and the time line stay current.
+// Re-draw every minute so "today", countdowns and the time line stay
+// current — but not while a form is open, so typing isn't lost.
 setInterval(() => {
-  if (activeSemesterId) {
+  if (activeSemesterId && !editing) {
     render();
   }
 }, 60 * 1000);
 
+
+// ---------------------------------------------------------
 // Start: read the semester list, then open the right semester.
+// ---------------------------------------------------------
+
 async function start() {
   canSave = await checkServer();
 

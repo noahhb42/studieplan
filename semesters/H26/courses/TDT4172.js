@@ -14,14 +14,21 @@ defineCourse({
     { day: "Friday",    start: "14:15", end: "16:00", type: "Exercise" },
   ],
 
+  required: null,  // exercises needed for approval, e.g. 8 (null = all mandatory ones)
+
   exercises: [
-    { due: "2026-09-18", name: "Prosjekt 1", done: true },
-    { due: "2026-10-09", name: "Prosjekt 2", done: true },
-    { due: "2026-10-23", name: "Prosjekt 3", done: false },
-    { due: "2026-11-10", name: "Prosjekt 4", done: false },
+    { due: "2026-09-18", name: "Prosjekt 1", status: "done" },
+    { due: "2026-10-09", name: "Prosjekt 2", status: "done" },
+    { due: "2026-10-23", name: "Prosjekt 3", status: "todo" },
+    { due: "2026-11-10", name: "Prosjekt 4", status: "todo" },
   ],
 
   exam: { date: "2026-11-25", time: "09:00" },
+
+  materials: [
+    { title: "Forelesningsnotater" },
+    { title: "Prosjektene" },
+  ],
 
   notes: [],
 });
