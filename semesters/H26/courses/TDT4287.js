@@ -17,7 +17,7 @@ defineCourse({
     { due: "2026-09-04", name: "Øving 1",  status: "todo", optional: true },
     { due: "2026-09-11", name: "Øving 2",  status: "todo", optional: true },
     { due: "2026-09-25", name: "Øving 3",  status: "todo", optional: true },
-    { due: "2026-10-23", name: "Prosjekt", status: "todo" },
+    { due: "2026-10-25", name: "Prosjekt", status: "todo" },
     { due: "2026-10-30", name: "Øving 4",  status: "todo", optional: true },
     { due: "2026-11-13", name: "Øving 5",  status: "todo", optional: true },
   ],
