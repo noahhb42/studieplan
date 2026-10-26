@@ -13,12 +13,12 @@ defineCourse({
   required: null,  // exercises needed for approval, e.g. 8 (null = all mandatory ones)
 
   exercises: [
-    { due: "2026-09-04", name: "Øving 0",  status: "todo", optional: true },
-    { due: "2026-09-04", name: "Øving 1",  status: "todo", optional: true },
-    { due: "2026-09-11", name: "Øving 2",  status: "todo", optional: true },
-    { due: "2026-09-25", name: "Øving 3",  status: "todo", optional: true },
+    { due: "2026-09-04", name: "Øving 0",  status: "done", optional: true },
+    { due: "2026-09-04", name: "Øving 1",  status: "done", optional: true },
+    { due: "2026-09-11", name: "Øving 2",  status: "done", optional: true },
+    { due: "2026-09-25", name: "Øving 3",  status: "done", optional: true },
     { due: "2026-10-25", name: "Prosjekt", status: "done" },
-    { due: "2026-10-30", name: "Øving 4",  status: "todo", optional: true },
+    { due: "2026-10-30", name: "Øving 4",  status: "done", optional: true },
     { due: "2026-11-13", name: "Øving 5",  status: "todo", optional: true },
   ],
 
