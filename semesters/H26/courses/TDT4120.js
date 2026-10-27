@@ -22,7 +22,7 @@ defineCourse({
     { due: "2026-10-08", name: "Øving 6",  status: "done" },
     { due: "2026-10-15", name: "Øving 7",  status: "done" },
     { due: "2026-10-22", name: "Øving 8",  status: "done" },
-    { due: "2026-10-29", name: "Øving 9",  status: "todo" },
+    { due: "2026-10-29", name: "Øving 9",  status: "done" },
     { due: "2026-11-05", name: "Øving 10", status: "todo" },
     { due: "2026-11-12", name: "Øving 11", status: "todo" },
     { due: "2026-11-19", name: "Øving 12", status: "todo" },
