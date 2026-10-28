@@ -20,7 +20,7 @@ defineCourse({
     { due: "2026-09-18",                name: "Prosjekt 1",                     status: "done" },
     { due: "2026-10-09",                name: "Prosjekt 2",                     status: "done" },
     { due: "2026-10-23",                name: "Prosjekt 3",                     status: "done" },
-    { due: "2026-10-28", time: "22:00", name: "Prosjekt 2 muntlig fremvisning", status: "todo" },
+    { due: "2026-10-28", time: "22:00", name: "Prosjekt 2 muntlig fremvisning", status: "done" },
     { due: "2026-11-10",                name: "Prosjekt 4",                     status: "todo" },
   ],
 
