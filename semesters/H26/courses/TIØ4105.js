@@ -13,17 +13,14 @@ defineCourse({
   required: 8,  // exercises needed for approval (null = all mandatory ones)
 
   exercises: [
-    { due: "2026-09-11", name: "Øving 1",  status: "done" },
-    { due: "2026-09-18", name: "Øving 2",  status: "done" },
-    { due: "2026-09-25", name: "Øving 3",  status: "late" },
-    { due: "2026-10-02", name: "Øving 4",  status: "done" },
-    { due: "2026-10-09", name: "Øving 5",  status: "done" },
-    { due: "2026-10-23", name: "Øving 7",  status: "done" },
-    { due: "2026-11-06", name: "Øving 8",  status: "todo" },
-    { due: "2026-11-13", name: "Øving 9",  status: "todo" },
-    { due: "2026-11-20", name: "Øving 10", status: "todo" },
-    { due: "2026-11-27", name: "Øving 11", status: "todo" },
-    { due: "2026-12-04", name: "Øving 12", status: "todo" },
+    { due: "2026-09-11", name: "Øving 1", status: "done" },
+    { due: "2026-09-18", name: "Øving 2", status: "done" },
+    { due: "2026-09-25", name: "Øving 3", status: "late" },
+    { due: "2026-10-02", name: "Øving 4", status: "done" },
+    { due: "2026-10-09", name: "Øving 5", status: "done" },
+    { due: "2026-10-23", name: "Øving 7", status: "done" },
+    { due: "2026-11-06", name: "Øving 8", status: "todo" },
+    { due: "2026-11-13", name: "Øving 9", status: "todo" },
   ],
 
   exam: { date: "2026-12-05", time: "09:00" },
