@@ -28,7 +28,7 @@ defineCourse({
     { due: "2026-11-01", name: "Øving 11", status: "done" },
     { due: "2026-11-08", name: "Øving 12", status: "done" },
     { due: "2026-11-15", name: "Øving 13", status: "done" },
-    { due: "2026-11-22", name: "Øving 14", status: "todo" },
+    { due: "2026-11-22", name: "Øving 14", status: "done" },
   ],
 
   exam: { date: "2026-11-25", time: "15:00" },
